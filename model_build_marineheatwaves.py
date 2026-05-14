@@ -9,10 +9,14 @@ import xarray as xr
 import matplotlib.pyplot as plt
 from datetime import timedelta
 import tensorflow as tf
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Conv1D, MaxPooling1D, Flatten, LSTM, Dense
+from tensorflow.keras.models import Sequential, Model
+from tensorflow.keras.layers import (
+    Conv1D, MaxPooling1D, Flatten, LSTM, Dense,
+    MultiHeadAttention, LayerNormalization, Dropout,
+    GlobalAveragePooling1D, Input, Embedding, Add
+)
 from sklearn.preprocessing import MinMaxScaler
-from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score 
+from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 
 
 def set_seeds(seed_value=42):
@@ -109,6 +113,47 @@ def fit_lstm_model(model, X_train, y_train, X_valid, y_valid, epochs, batch_size
         shuffle=False
     )
     return history
+
+# Transformer encoder model build
+def build_transformer_model(n_lag, n_features, n_seq, d_model=32, num_heads=2, ff_dim=64, dropout_rate=0.1):
+
+    inputs = Input(shape=(n_lag, n_features))
+
+    x = Dense(d_model)(inputs)
+
+    positions = tf.range(start=0, limit=n_lag, delta=1)[tf.newaxis, :]
+    pos_emb = Embedding(input_dim=n_lag, output_dim=d_model)(positions)
+
+    x = Add()([x, pos_emb])
+
+    attn_out = MultiHeadAttention(num_heads=num_heads, key_dim=d_model // num_heads)(x, x)
+    attn_out = Dropout(dropout_rate)(attn_out)
+    x = LayerNormalization(epsilon=1e-6)(Add()([x, attn_out]))
+
+    ff_out = Dense(ff_dim, activation='relu')(x)
+    ff_out = Dense(d_model)(ff_out)
+    ff_out = Dropout(dropout_rate)(ff_out)
+    x = LayerNormalization(epsilon=1e-6)(Add()([x, ff_out]))
+
+    x = GlobalAveragePooling1D()(x)
+    outputs = Dense(n_seq, activation='linear')(x)
+
+    model = Model(inputs=inputs, outputs=outputs)
+    model.compile(optimizer='adam', loss='mae')
+    return model
+
+
+def fit_transformer_model(model, X_train, y_train, X_valid, y_valid, epochs, batch_size):
+
+    history = model.fit(
+        X_train, y_train,
+        epochs=epochs,
+        batch_size=batch_size,
+        validation_data=(X_valid, y_valid),
+        shuffle=False
+    )
+    return history
+
 
 # CNN 1D model Build
 def build_cnn_model(n_lag, n_features, n_seq):
