@@ -1,0 +1,15 @@
+numpy
+pandas
+xarray
+matplotlib
+scikit-learn
+tensorflow
+scipy
+seaborn
+netCDF4
+cftime
+h5netcdf
+dask
+plotly
+jupyter
+ipykernel
